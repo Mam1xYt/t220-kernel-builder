@@ -1,0 +1,66 @@
+name: Build Kernel
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - sublevel: ""
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        run: |
+          echo "KERNEL_SOURCE=${{ vars.KERNEL_SOURCE || 'https://github.com/gta7lite/android_kernel_samsung_ot8' }}" >> $GITHUB_ENV
+          echo "KERNEL_SOURCE_BRANCH=${{ vars.KERNEL_SOURCE_BRANCH || 'master' }}" >> $GITHUB_ENV
+          echo "KERNEL_CONFIG=${{ vars.KERNEL_CONFIG || 'exynos850-gta7litewifi_defconfig' }}" >> $GITHUB_ENV
+          echo "KERNEL_IMAGE=${{ vars.KERNEL_IMAGE || 'Image.gz' }}" >> $GITHUB_ENV
+          echo "CLANG_VERSION=${{ vars.CLANG_VERSION || '17.0.0' }}" >> $GITHUB_ENV
+          echo "EXTRA_CMD=${{ vars.EXTRA_CMD || 'LLVM=1 LLVM_IAS=1 ARCH=arm64' }}" >> $GITHUB_ENV
+          echo "DISABLE_LTO=${{ vars.DISABLE_LTO || 'true' }}" >> $GITHUB_ENV
+          echo "USE_OVERLAYS=${{ vars.USE_OVERLAYS || 'true' }}" >> $GITHUB_ENV
+          echo "NEED_DTBO=${{ vars.NEED_DTBO || 'true' }}" >> $GITHUB_ENV
+
+      - name: Clone kernel source
+        run: |
+          git clone ${{ env.KERNEL_SOURCE }} --depth=1 --branch ${{ env.KERNEL_SOURCE_BRANCH }} ${{ github.workspace }}/kernel
+          echo "KERNEL_SOURCE_DIR=${{ github.workspace }}/kernel" >> $GITHUB_ENV
+
+      - name: Apply Droidspaces Patches
+        working-directory: ${{ env.KERNEL_SOURCE_DIR }}
+        run: |
+          if [ -f ${{ github.workspace }}/droidspaces_config.patch ]; then
+            git apply ${{ github.workspace }}/droidspaces_config.patch || echo "Patch may have already been applied, continuing..."
+          fi
+
+      - name: Build kernel
+        working-directory: ${{ env.KERNEL_SOURCE_DIR }}
+        run: |
+          export CLANG_VERSION=${{ env.CLANG_VERSION }}
+          export ARCH=arm64
+          export EXTRA_CMD="${{ env.EXTRA_CMD }}"
+          export DISABLE_LTO=${{ env.DISABLE_LTO }}
+          export USE_OVERLAYS=${{ env.USE_OVERLAYS }}
+          export KERNEL_IMAGE=${{ env.KERNEL_IMAGE }}
+          export KERNEL_CONFIG=${{ env.KERNEL_CONFIG }}
+          bash build.sh
+
+      - name: Package AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 -b master
+          cd AnyKernel3
+          cp -f ${{ env.KERNEL_SOURCE_DIR }}/arch/arm64/boot/Image.gz-dtb ./
+          zip -r9 ../AnyKernel3_${{ env.KERNEL_IMAGE }} . -x .git README.md
+
+      - name: Upload AnyKernel3
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel3
+          path: AnyKernel3_${{ env.KERNEL_IMAGE }}
