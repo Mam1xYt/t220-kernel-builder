@@ -44,19 +44,19 @@ jobs:
           export EXTRA_CMD="$EXTRA_CMD"
           export DISABLE_LTO=$DISABLE_LTO
           export USE_OVERLAYS=$USE_OVERLAYS
-          export KERNEL_IMAGE=$KERNEL_IMAGE
-          export KERNEL_CONFIG=$KERNEL_CONFIG
-          bash build.sh
+          make $KERNEL_CONFIG
+          make -j$(nproc) O=out
+          cp out/arch/arm64/boot/$KERNEL_IMAGE* ./
 
       - name: Package AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3 -b master
           cd AnyKernel3
-          cp -f $KERNEL_SOURCE_DIR/arch/arm64/boot/Image.gz-dtb ./
-          zip -r9 ../AnyKernel3_Image.gz . -x .git README.md
+          cp -f $KERNEL_SOURCE_DIR/Image.gz* ./ 2>/dev/null || cp -f $KERNEL_SOURCE_DIR/Image ./
+          zip -r9 ../AnyKernel3_$KERNEL_IMAGE.zip . -x .git README.md
 
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
           name: AnyKernel3
-          path: AnyKernel3_Image.gz
+          path: AnyKernel3_$KERNEL_IMAGE.zip
